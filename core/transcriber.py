@@ -134,7 +134,12 @@ class MlxWhisperBackend(Backend):
     def transcribe(self, audio: np.ndarray, sample_rate: int = 16000, language: str | None = None) -> TranscribeResult:
         import mlx_whisper
 
-        kwargs: dict = {"verbose": False}
+        kwargs: dict = {
+            "verbose": False,
+            "condition_on_previous_text": False,  # prevents hallucination loops
+            "no_speech_threshold": 0.6,
+            "compression_ratio_threshold": 1.8,  # filters repetitive hallucinations
+        }
         if language:
             kwargs["language"] = language
         if self._initial_prompt:

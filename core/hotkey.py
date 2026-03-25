@@ -58,22 +58,98 @@ class HotkeyListener:
         return HotKey.parse(self.key)
 
     def _resolve_single_key(self):
-        """Return a single Key or KeyCode for single-key bindings like <fn> or <insert>."""
+        """Return a single Key or KeyCode for single-key bindings like <cmd_r> or <insert>."""
         from pynput.keyboard import Key
-        # Strip angle brackets for Key enum lookup: "<fn>" → "fn"
+        # Strip angle brackets for Key enum lookup: "<cmd_r>" → "cmd_r"
         name = self.key.strip("<>")
-        try:
-            return getattr(Key, name)
-        except AttributeError:
-            return None
+        key = getattr(Key, name, None)
+        if key is None and not self._is_fn_key():
+            print(f"[hotkey] Warning: '{self.key}' not found in pynput Key enum. "
+                  f"Run keytest to find the correct name.", flush=True)
+        return key
 
     def _is_single_key(self) -> bool:
         """True if key is a single special key like <fn>, <insert> (no + combos)."""
         return "+" not in self.key
 
+    def _is_fn_key(self) -> bool:
+        return self._is_single_key() and self.key.strip("<>") in ("fn", "globe")
+
+    def _run_fn_quartz(self) -> None:
+        """
+        Fn/Globe via raw Quartz CGEventTap.
+        kCGEventFlagsChanged fires with the NEW flag state embedded in the event —
+        no polling, no timing issues. Works for both hold and press/toggle modes.
+        """
+        from Quartz import (
+            CGEventTapCreate, kCGSessionEventTap, kCGHeadInsertEventTap,
+            kCGEventTapOptionListenOnly, CGEventMaskBit, kCGEventFlagsChanged,
+            CGEventGetFlags, CGEventGetIntegerValueField, kCGKeyboardEventKeycode,
+            kCGEventFlagMaskSecondaryFn, CFMachPortCreateRunLoopSource,
+            CFRunLoopGetCurrent, CFRunLoopAddSource, CFRunLoopRun,
+            kCFRunLoopDefaultMode, CGEventTapEnable,
+        )
+
+        FN_VK = 0x3F
+        FN_FLAG = kCGEventFlagMaskSecondaryFn
+        prev_fn = [False]
+
+        def tap_callback(proxy, event_type, event, refcon):
+            vk = CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode)
+            if event_type != kCGEventFlagsChanged or vk != FN_VK:
+                return event
+
+            fn_now = bool(CGEventGetFlags(event) & FN_FLAG)
+            was = prev_fn[0]
+            prev_fn[0] = fn_now
+
+            if fn_now and not was:
+                # Physical press
+                if self.mode == "hold":
+                    if not self._held:
+                        self._held = True
+                        threading.Thread(target=self.on_start, daemon=True).start()
+                else:
+                    threading.Thread(target=self.on_start, daemon=True).start()
+            elif not fn_now and was:
+                # Physical release
+                if self.mode == "hold" and self._held:
+                    self._held = False
+                    threading.Thread(target=self.on_stop, daemon=True).start()
+
+            return event
+
+        tap = CGEventTapCreate(
+            kCGSessionEventTap,
+            kCGHeadInsertEventTap,
+            kCGEventTapOptionListenOnly,
+            CGEventMaskBit(kCGEventFlagsChanged),
+            tap_callback,
+            None,
+        )
+        if tap is None:
+            raise RuntimeError("CGEventTapCreate failed — check Accessibility permission")
+
+        src = CFMachPortCreateRunLoopSource(None, tap, 0)
+        loop = CFRunLoopGetCurrent()
+        CFRunLoopAddSource(loop, src, kCFRunLoopDefaultMode)
+        CGEventTapEnable(tap, True)
+        print("[hotkey] Fn/Globe tap active (Quartz CGEventTap)", flush=True)
+        CFRunLoopRun()
+
+    def _run_fn_press(self) -> None:
+        self._run_fn_quartz()
+
+    def _run_fn_hold(self) -> None:
+        self._run_fn_quartz()
+
     def _run_press(self) -> None:
         """For toggle and auto_stop — fires on key press."""
         from pynput import keyboard
+
+        if self._is_fn_key():
+            self._run_fn_press()
+            return
 
         if self._is_single_key():
             target = self._resolve_single_key()
@@ -96,6 +172,14 @@ class HotkeyListener:
 
         if self._is_single_key():
             target = self._resolve_single_key()
+
+            # Fn/Globe special case: pynput bug causes on_press to never fire and
+            # on_release to fire twice (once on actual press, once on actual release).
+            # Detect which is which using CGEventSourceFlagsState.
+            if self._is_fn_key():
+                self._run_fn_hold()
+                return
+
             def on_press(key):
                 if key == target and not self._held:
                     self._held = True

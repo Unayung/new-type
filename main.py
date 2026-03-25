@@ -15,12 +15,12 @@ Hyprland keybind calls `uv run main.py toggle` (or start/stop on press/release).
 
 from __future__ import annotations
 
-import os
 import signal
 from typing import TYPE_CHECKING
 
+import numpy as np
 if TYPE_CHECKING:
-    import numpy as np
+    pass
 import socket
 import sys
 import threading
@@ -34,6 +34,7 @@ from core.recorder import Recorder
 from core.transcriber import create_backend
 from core.cleanup import create_cleanup
 from core.hotkey import create_hotkey_listener
+from core.config_ui import ConfigServer
 from core import context
 
 app = typer.Typer(help="new-type voice dictation")
@@ -47,7 +48,7 @@ def load_config() -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Status indicator — writes JSON for Waybar custom module
+# Status indicator
 # ---------------------------------------------------------------------------
 
 STATUS_FILE = Path("/tmp/new-type-status.json")
@@ -55,31 +56,118 @@ STATUS_FILE = Path("/tmp/new-type-status.json")
 
 class StatusIndicator:
     """
-    Writes status JSON to /tmp/new-type-status.json.
-    Waybar custom module polls this file and renders a colored dot.
-    No system tray / gi dependency needed.
+    Dual output:
+    - macOS: updates the rumps menu bar app (title + status menu item)
+    - Linux: writes JSON to /tmp/new-type-status.json for Waybar
     """
+
+    def __init__(self) -> None:
+        self._tray: "MenuBarApp | None" = None
+
+    def attach_tray(self, tray: "MenuBarApp") -> None:
+        self._tray = tray
 
     def start(self) -> None:
         self.set_idle()
 
     def set_idle(self) -> None:
-        self._write("●", "idle", "new-type: idle")
+        if self._tray:
+            self._tray.set_idle()
+        self._write_json("●", "idle", "new-type: idle")
 
     def set_recording(self) -> None:
-        self._write("●", "rec", "new-type: recording…")
+        if self._tray:
+            self._tray.set_recording()
+        self._write_json("●", "rec", "new-type: recording…")
 
     def clear(self) -> None:
         STATUS_FILE.unlink(missing_ok=True)
 
-    def _write(self, text: str, alt: str, tooltip: str) -> None:
+    def _write_json(self, text: str, alt: str, tooltip: str) -> None:
         import json
         STATUS_FILE.write_text(json.dumps({
-            "text": text,
-            "alt": alt,
-            "class": alt,     # "idle" or "rec" — for CSS coloring
-            "tooltip": tooltip,
+            "text": text, "alt": alt, "class": alt, "tooltip": tooltip,
         }))
+
+
+# ---------------------------------------------------------------------------
+# macOS menu bar app (rumps)
+# ---------------------------------------------------------------------------
+
+def _make_tray_icon(recording: bool) -> str:
+    """
+    Render a waveform icon (3 bars) to a temp PNG and return its path.
+    Black on transparent → macOS auto-inverts for dark/light menu bar.
+    Red bars when recording.
+    """
+    from PIL import Image, ImageDraw
+
+    size = 36  # 18pt @ 2x retina
+    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+
+    color = (255, 59, 48, 255) if recording else (0, 0, 0, 255)
+    bar_w = 5
+    gap = 3
+    # heights: short, tall, short — classic waveform silhouette
+    heights = [14, 22, 14] if not recording else [18, 28, 18]
+    total_w = 3 * bar_w + 2 * gap
+    x0 = (size - total_w) // 2
+
+    for i, h in enumerate(heights):
+        x = x0 + i * (bar_w + gap)
+        y = (size - h) // 2
+        draw.rounded_rectangle([x, y, x + bar_w - 1, y + h - 1], radius=2, fill=color)
+
+    path = f"/tmp/new-type-icon-{'rec' if recording else 'idle'}.png"
+    img.save(path)
+    return path
+
+
+class MenuBarApp:
+    """Thin wrapper so we only import rumps on macOS."""
+
+    def __init__(self, daemon: "Daemon") -> None:
+        import rumps
+        self._daemon = daemon
+        self._icon_idle = _make_tray_icon(recording=False)
+        self._icon_rec = _make_tray_icon(recording=True)
+        self._status_item = rumps.MenuItem("● Idle")
+
+        class _App(rumps.App):
+            pass
+
+        self._app = _App("new-type", icon=self._icon_idle, title=None, quit_button=None)
+        self._app.template = True  # adapt to dark/light menu bar (idle icon only)
+        self._app.menu = [
+            self._status_item,
+            None,  # separator
+            rumps.MenuItem("Settings…", callback=self._on_settings),
+            rumps.MenuItem("Quit", callback=self._on_quit),
+        ]
+
+    def set_idle(self) -> None:
+        self._app.icon = self._icon_idle
+        self._app.template = True
+        self._status_item.title = "● Idle"
+
+    def set_recording(self) -> None:
+        self._app.icon = self._icon_rec
+        self._app.template = False  # keep red color, don't invert
+        self._status_item.title = "⏺ Recording…"
+
+    def run(self) -> None:
+        self._app.run()
+
+    def stop(self) -> None:
+        import rumps
+        rumps.quit_application()
+
+    def _on_settings(self, _) -> None:
+        self._daemon.config_server.open_browser()
+
+    def _on_quit(self, _) -> None:
+        self._daemon.shutdown()
 
 
 # ---------------------------------------------------------------------------
@@ -106,6 +194,8 @@ class Daemon:
         self.socket_path = config["socket"]["path"]
         self.status = StatusIndicator()
         self._lock = threading.Lock()
+        self._transcribe_lock = threading.Lock()
+        self._server: socket.socket | None = None
 
         cc_mode = config.get("chinese_convert")
         if cc_mode:
@@ -114,6 +204,7 @@ class Daemon:
         else:
             self._opencc = None
 
+        self.config_server = ConfigServer()
         self._hotkey = create_hotkey_listener(config, self)
 
     def _inject(self, text: str) -> None:
@@ -146,6 +237,14 @@ class Daemon:
         if duration < 0.3:
             return "too_short"
 
+        rms = float(np.sqrt(np.mean(audio ** 2)))
+        if rms < 0.01:
+            return "silence_skipped"
+
+        if not self._transcribe_lock.acquire(blocking=False):
+            print("[transcriber] busy — dropping overlapping transcription request", flush=True)
+            return "transcription_busy"
+
         try:
             ctx = context.collect()
             lang = self.config["transcription"].get("language") or None
@@ -155,6 +254,12 @@ class Daemon:
                 return "empty_transcript"
 
             text = result.text
+            # Strip trailing fullwidth digits Whisper hallucinates on short Chinese segments
+            # e.g. "狗狗吃牛排１" → "狗狗吃牛排"
+            import re
+            text = re.sub(r'[\uff00-\uff60]+$', '', text).strip()
+            if not text:
+                return "empty_transcript"
             if self._opencc:
                 text = self._opencc.convert(text)
 
@@ -167,6 +272,8 @@ class Daemon:
             return f"injected:{cleaned[:80]}"
         except Exception as e:
             return f"error:{e}"
+        finally:
+            self._transcribe_lock.release()
 
     def _transcribe_and_inject(self) -> str:
         """Manual stop path: stops recorder then processes audio."""
@@ -185,38 +292,55 @@ class Daemon:
             return self.handle_stop()
         return self.handle_start()
 
+    def handle_test_stop(self) -> str:
+        """Stop recording, transcribe, return text — no injection."""
+        with self._lock:
+            if not self.recorder.is_recording:
+                return "(not recording)"
+            self.status.set_idle()
+        audio = self.recorder.stop()
+        if audio is None or len(audio) == 0:
+            return "(no audio)"
+        duration = len(audio) / self.config["audio"]["sample_rate"]
+        if duration < 0.3:
+            return "(too short)"
+        rms = float(np.sqrt(np.mean(audio ** 2)))
+        if rms < 0.01:
+            return "(silence)"
+        if not self._transcribe_lock.acquire(blocking=False):
+            return "(transcriber busy)"
+        try:
+            lang = self.config["transcription"].get("language") or None
+            result = self.transcriber.transcribe(audio, language=lang)
+            text = result.text
+            import re
+            text = re.sub(r'[\uff00-\uff60]+$', '', text).strip()
+            if self._opencc and text:
+                text = self._opencc.convert(text)
+            return text or "(empty)"
+        except Exception as e:
+            return f"(error: {e})"
+        finally:
+            self._transcribe_lock.release()
+
     def handle_status(self) -> str:
         state = "recording" if self.recorder.is_recording else "idle"
         return f"{state} (mode:{self.mode})"
 
-    def run(self) -> None:
-        sock_path = Path(self.socket_path)
-        if sock_path.exists():
-            sock_path.unlink()
+    def shutdown(self) -> None:
+        """Clean up and exit. Safe to call from any thread."""
+        if self._server:
+            try:
+                self._server.close()
+            except Exception:
+                pass
+        Path(self.socket_path).unlink(missing_ok=True)
+        self.status.clear()
+        sys.exit(0)
 
-        server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        server.bind(str(sock_path))
-        server.listen(5)
-        server.settimeout(1.0)
-
-        self.status.start()
-
-        if self._hotkey:
-            self._hotkey.start()
-            print(f"[new-type] Hotkey active: {self._hotkey.key}", flush=True)
-
-        print(f"[new-type] Daemon running. Socket: {self.socket_path}", flush=True)
-
-        def _shutdown(sig, frame):
-            print("\n[new-type] Shutting down...", flush=True)
-            server.close()
-            sock_path.unlink(missing_ok=True)
-            self.status.clear()
-            sys.exit(0)
-
-        signal.signal(signal.SIGINT, _shutdown)
-        signal.signal(signal.SIGTERM, _shutdown)
-
+    def _run_socket(self) -> None:
+        """Socket server loop — runs in a background thread."""
+        server = self._server
         while True:
             try:
                 conn, _ = server.accept()
@@ -238,10 +362,8 @@ class Daemon:
                 elif data == "quit":
                     conn.sendall(b"quitting")
                     conn.close()
-                    server.close()
-                    sock_path.unlink(missing_ok=True)
-                    self.status.clear()
-                    sys.exit(0)
+                    self.shutdown()
+                    return
                 else:
                     response = f"unknown_command:{data}"
                 conn.sendall(response.encode())
@@ -252,6 +374,35 @@ class Daemon:
                     pass
             finally:
                 conn.close()
+
+    def run(self) -> None:
+        sock_path = Path(self.socket_path)
+        if sock_path.exists():
+            sock_path.unlink()
+
+        self._server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self._server.bind(str(sock_path))
+        self._server.listen(5)
+        self._server.settimeout(1.0)
+
+        if self._hotkey:
+            self._hotkey.start()
+            print(f"[new-type] Hotkey active: {self._hotkey.key}", flush=True)
+
+        threading.Thread(target=self._run_socket, daemon=True, name="socket-server").start()
+        self.config_server.start(daemon=self)
+        print(f"[new-type] Daemon running. Socket: {self.socket_path}", flush=True)
+
+        if sys.platform == "darwin":
+            tray = MenuBarApp(self)
+            self.status.attach_tray(tray)
+            self.status.set_idle()
+            tray.run()  # blocks on main thread (NSApp run loop)
+        else:
+            self.status.start()
+            signal.signal(signal.SIGINT, lambda s, f: self.shutdown())
+            signal.signal(signal.SIGTERM, lambda s, f: self.shutdown())
+            threading.Event().wait()  # block forever; socket thread is daemon
 
 
 # ---------------------------------------------------------------------------
