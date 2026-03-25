@@ -2,7 +2,8 @@
 Transcriber — abstract backend for speech-to-text.
 
 Backends:
-  faster_whisper  — local, CTranslate2 (large-v3, turbo)
+  faster_whisper  — local, CTranslate2 (large-v3, turbo) — Linux/CUDA
+  mlx_whisper     — local, Apple MLX (Metal + Neural Engine) — macOS Apple Silicon only
   whisper_cpp     — local, GGUF subprocess (belle-turbo, quantized models)
   groq            — cloud, Groq Whisper API (fastest cloud)
   openai          — cloud, OpenAI Whisper API
@@ -94,6 +95,53 @@ class FasterWhisperBackend(Backend):
         )
         text = " ".join(seg.text for seg in segments)
         return TranscribeResult(text=text, language=info.language)
+
+
+# ---------------------------------------------------------------------------
+# mlx-whisper (Apple Silicon — Metal + Neural Engine)
+# ---------------------------------------------------------------------------
+
+class MlxWhisperBackend(Backend):
+    """
+    Runs Whisper on Apple Silicon via MLX (Metal + Neural Engine).
+    Fastest local option on M-series Macs.
+
+    Install: uv add mlx-whisper
+    Models: mlx-community/whisper-turbo (fast) | mlx-community/whisper-large-v3-turbo (best)
+    """
+
+    DEFAULT_REPO = "mlx-community/whisper-large-v3-turbo"
+
+    MODEL_MAP = {
+        "turbo": "mlx-community/whisper-turbo",
+        "large-v3": "mlx-community/whisper-large-v3",
+        "large-v3-turbo": "mlx-community/whisper-large-v3-turbo",
+        "small": "mlx-community/whisper-small",
+        "medium": "mlx-community/whisper-medium",
+        "base": "mlx-community/whisper-base",
+        "tiny": "mlx-community/whisper-tiny",
+    }
+
+    def __init__(
+        self,
+        model: str = "large-v3-turbo",
+        initial_prompt: str | None = None,
+    ):
+        self._repo = self.MODEL_MAP.get(model, model)
+        self._initial_prompt = initial_prompt
+        print(f"[transcriber] MLX Whisper model: {self._repo} (downloads on first use)")
+
+    def transcribe(self, audio: np.ndarray, sample_rate: int = 16000, language: str | None = None) -> TranscribeResult:
+        import mlx_whisper
+
+        kwargs: dict = {"verbose": False}
+        if language:
+            kwargs["language"] = language
+        if self._initial_prompt:
+            kwargs["initial_prompt"] = self._initial_prompt
+
+        result = mlx_whisper.transcribe(audio, path_or_hf_repo=self._repo, **kwargs)
+        return TranscribeResult(text=result["text"], language=result.get("language", ""))
 
 
 # ---------------------------------------------------------------------------
@@ -241,6 +289,7 @@ def create_backend(config: dict) -> Backend:
     """
     config example:
       {"backend": "faster_whisper", "model": "turbo"}
+      {"backend": "mlx_whisper", "model": "large-v3-turbo"}
       {"backend": "whisper_cpp", "model_path": "~/.local/share/new-type/belle-turbo.gguf"}
       {"backend": "groq", "api_key": "...", "model": "whisper-large-v3-turbo"}
       {"backend": "openai", "api_key": "..."}
@@ -255,6 +304,11 @@ def create_backend(config: dict) -> Backend:
             compute_type=config.get("compute_type", "auto"),
             initial_prompt=config.get("initial_prompt"),
             hallucination_silence_threshold=config.get("hallucination_silence_threshold"),
+        )
+    elif backend == "mlx_whisper":
+        return MlxWhisperBackend(
+            model=config.get("model", "large-v3-turbo"),
+            initial_prompt=config.get("initial_prompt"),
         )
     elif backend == "whisper_cpp":
         return WhisperCppBackend(

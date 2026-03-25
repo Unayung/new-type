@@ -9,7 +9,7 @@ Inspired by [Typeless](https://typeless.com), built for privacy, Wayland, and Tr
 ## Features
 
 - **Local Whisper inference** via faster-whisper (large-v3, turbo, and more)
-- **GPU acceleration** — CUDA on Linux, CPU on macOS (fast enough with turbo)
+- **GPU acceleration** — CUDA on Linux, Metal (MLX) on macOS Apple Silicon
 - **Three recording modes** — toggle, hold-to-talk, auto-stop on silence
 - **Silero VAD** for accurate auto-stop (neural, not just energy threshold)
 - **Traditional Chinese output** — OpenCC conversion + initial prompt biasing
@@ -80,7 +80,7 @@ All settings live in `config.yaml`.
 
 ```yaml
 transcription:
-  backend: faster_whisper   # faster_whisper | whisper_cpp | groq | openai | assemblyai
+  backend: faster_whisper   # faster_whisper | mlx_whisper | whisper_cpp | groq | openai | assemblyai
   model: turbo              # turbo | large-v3 | small | medium | base | tiny
   device: auto              # auto | cpu | cuda
   compute_type: float16     # float16 (GPU) | int8 (CPU)
@@ -199,6 +199,35 @@ Add to `style.css`:
 #custom-new-type { color: #22c55e; margin-right: 15px; }
 #custom-new-type.rec { color: #ef4444; }
 ```
+
+### Metal on macOS Apple Silicon (MLX)
+
+`mlx-whisper` runs Whisper natively on the M-series GPU + Neural Engine — significantly faster than CPU:
+
+```bash
+uv add mlx-whisper
+```
+
+Then in `config.yaml`:
+```yaml
+transcription:
+  backend: mlx_whisper
+  model: large-v3-turbo   # downloads from HuggingFace on first run (~800 MB)
+  language: zh
+  initial_prompt: "以下是台灣繁體中文的日常口語對話，語氣自然隨性，包含中英文夾雜、台灣用語與口語表達。"
+```
+
+Models (auto-downloaded from `mlx-community` on HuggingFace):
+
+| Model | Size | Speed |
+|---|---|---|
+| `turbo` | ~800 MB | fastest |
+| `large-v3-turbo` | ~800 MB | fast + accurate |
+| `large-v3` | ~3 GB | most accurate |
+
+> Intel Mac: use `whisper_cpp` backend instead — it also supports Metal via Core ML.
+
+---
 
 ### CUDA on Arch Linux (CUDA 13 + ctranslate2 workaround)
 

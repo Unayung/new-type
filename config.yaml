@@ -2,8 +2,9 @@
 
 # --- Transcription backend ---
 # Options:
-#   faster_whisper  — local, CTranslate2 (recommended for most)
-#   whisper_cpp     — local, GGUF (for belle-turbo and quantized models)
+#   faster_whisper  — local, CTranslate2 (Linux/CUDA recommended)
+#   mlx_whisper     — local, Apple MLX Metal (macOS Apple Silicon recommended)
+#   whisper_cpp     — local, GGUF (belle-turbo, quantized, Metal on Intel Mac)
 #   groq            — cloud, fastest
 #   openai          — cloud
 #   assemblyai      — cloud
@@ -21,6 +22,11 @@ transcription:
 
   # Suppress hallucinations on silence (e.g. "Thank you." / "謝謝。" on quiet audio)
   hallucination_silence_threshold: 2.0
+
+  # For macOS Apple Silicon (Metal — fastest local option):
+  # backend: mlx_whisper
+  # model: large-v3-turbo   # turbo | large-v3-turbo | large-v3 | small | medium
+  # (run once: uv add mlx-whisper)
 
   # For whisper_cpp backend:
   # backend: whisper_cpp
