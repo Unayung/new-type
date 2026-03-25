@@ -238,7 +238,8 @@ class Daemon:
             return "too_short"
 
         rms = float(np.sqrt(np.mean(audio ** 2)))
-        if rms < 0.01:
+        if rms < 0.005:
+            print(f"[new-type] silence skipped (rms={rms:.4f})", flush=True)
             return "silence_skipped"
 
         if not self._transcribe_lock.acquire(blocking=False):
@@ -269,8 +270,10 @@ class Daemon:
                 return "empty_after_cleanup"
 
             self._inject(cleaned)
+            print(f"[new-type] injected: {cleaned[:80]}", flush=True)
             return f"injected:{cleaned[:80]}"
         except Exception as e:
+            print(f"[new-type] error: {e}", flush=True)
             return f"error:{e}"
         finally:
             self._transcribe_lock.release()
