@@ -9,3 +9,6 @@ wheels/
 # Virtual environments
 .venv
 lib/
+
+# Local machine config (Linux vs macOS have different settings)
+config.yaml
