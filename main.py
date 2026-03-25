@@ -15,6 +15,7 @@ Hyprland keybind calls `uv run main.py toggle` (or start/stop on press/release).
 
 from __future__ import annotations
 
+import os
 import signal
 from typing import TYPE_CHECKING
 
@@ -339,7 +340,7 @@ class Daemon:
                 pass
         Path(self.socket_path).unlink(missing_ok=True)
         self.status.clear()
-        sys.exit(0)
+        os._exit(0)
 
     def _run_socket(self) -> None:
         """Socket server loop — runs in a background thread."""
