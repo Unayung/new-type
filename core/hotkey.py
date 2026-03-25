@@ -54,36 +54,60 @@ class HotkeyListener:
             print("[hotkey] Continuing without built-in hotkey — use system keybinds instead.", flush=True)
 
     def _parse_key(self):
-        from pynput.keyboard import Key, KeyCode, HotKey
-        # Parse key string like "<insert>", "<ctrl>+<alt>+a"
+        from pynput.keyboard import Key, HotKey
         return HotKey.parse(self.key)
+
+    def _resolve_single_key(self):
+        """Return a single Key or KeyCode for single-key bindings like <fn> or <insert>."""
+        from pynput.keyboard import Key
+        # Strip angle brackets for Key enum lookup: "<fn>" → "fn"
+        name = self.key.strip("<>")
+        try:
+            return getattr(Key, name)
+        except AttributeError:
+            return None
+
+    def _is_single_key(self) -> bool:
+        """True if key is a single special key like <fn>, <insert> (no + combos)."""
+        return "+" not in self.key
 
     def _run_press(self) -> None:
         """For toggle and auto_stop — fires on key press."""
         from pynput import keyboard
 
-        target_keys = self._parse_key()
-        cb = self.on_start if self.mode == "auto_stop" else None
-
-        def on_activate():
-            if self.mode == "toggle":
-                # toggle is handled by the daemon
-                self.on_start()  # on_start is bound to handle_toggle in this mode
-            else:
-                self.on_start()
-
-        hotkey = keyboard.HotKey(target_keys, on_activate)
-
-        with keyboard.Listener(
-            on_press=hotkey.press,
-            on_release=hotkey.release,
-        ) as listener:
-            self._listener = listener
-            listener.join()
+        if self._is_single_key():
+            target = self._resolve_single_key()
+            def on_press(key):
+                if key == target:
+                    threading.Thread(target=self.on_start, daemon=True).start()
+            with keyboard.Listener(on_press=on_press) as listener:
+                self._listener = listener
+                listener.join()
+        else:
+            target_keys = self._parse_key()
+            hotkey = keyboard.HotKey(target_keys, lambda: threading.Thread(target=self.on_start, daemon=True).start())
+            with keyboard.Listener(on_press=hotkey.press, on_release=hotkey.release) as listener:
+                self._listener = listener
+                listener.join()
 
     def _run_hold(self) -> None:
         """For hold mode — start on press, stop on release."""
         from pynput import keyboard
+
+        if self._is_single_key():
+            target = self._resolve_single_key()
+            def on_press(key):
+                if key == target and not self._held:
+                    self._held = True
+                    threading.Thread(target=self.on_start, daemon=True).start()
+            def on_release(key):
+                if key == target and self._held:
+                    self._held = False
+                    threading.Thread(target=self.on_stop, daemon=True).start()
+            with keyboard.Listener(on_press=on_press, on_release=on_release) as listener:
+                self._listener = listener
+                listener.join()
+            return
 
         target_keys = set(self._parse_key())
         currently_pressed: set = set()

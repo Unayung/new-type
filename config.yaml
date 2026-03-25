@@ -67,7 +67,7 @@ recording:
 #
 # Key format: "<insert>" | "<ctrl>+<alt>+a" | "<cmd>+<shift>+space"
 hotkey:
-  key: null   # e.g. "<insert>" or "<ctrl>+<alt>+space"
+  key: null   # Linux: "<insert>" | macOS: "<fn>"
 
 # --- Chinese conversion ---
 # Whisper outputs Simplified Chinese (zh-CN). Use opencc to convert to Traditional.

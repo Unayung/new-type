@@ -123,15 +123,17 @@ recording:
 
 ```yaml
 hotkey:
-  key: "<insert>"          # Linux example
-  # key: "<cmd>+<shift>+a" # macOS example
+  key: "<insert>"   # Linux
+  # key: "<fn>"     # macOS — the Fn/Globe key
 ```
 
-On macOS, grant Accessibility permission when prompted.
-On Linux/Wayland, add yourself to the `input` group if needed:
+**macOS:** Grant Accessibility permission when prompted (System Settings → Privacy & Security → Accessibility). The `<fn>` key (Globe key on Apple Silicon) works as a dedicated dictation trigger with no conflicts.
+
+**Linux/Wayland:** Add yourself to the `input` group if the hotkey fails:
 ```bash
 sudo usermod -aG input $USER   # then re-login
 ```
+Alternatively, use Hyprland keybinds with the socat scripts (more reliable on Wayland).
 
 ### LLM cleanup
 
