@@ -506,9 +506,14 @@ class ConfigServer:
     def start(self, daemon=None) -> None:
         global _daemon
         _daemon = daemon
-        self._server = HTTPServer(("127.0.0.1", self._port), _Handler)
+        try:
+            self._server = HTTPServer(("127.0.0.1", self._port), _Handler)
+        except OSError:
+            print(f"[config-ui] Port {self._port} already in use — settings UI unavailable", flush=True)
+            return
         t = threading.Thread(target=self._server.serve_forever, daemon=True, name="config-ui")
         t.start()
+        print(f"[config-ui] Settings UI at http://127.0.0.1:{self._port}/", flush=True)
 
     def open_browser(self) -> None:
         webbrowser.open(f"http://127.0.0.1:{self._port}/")
