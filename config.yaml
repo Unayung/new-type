@@ -60,6 +60,15 @@ recording:
   min_speech_duration: 0.5 # minimum seconds of speech before silence detection arms
   no_speech_timeout: 5.0   # seconds to cancel if you never speak
 
+# --- Built-in hotkey (cross-platform, no window manager needed) ---
+# Uses pynput — works on macOS out of the box.
+# On Linux/Wayland: may require user to be in 'input' group (sudo usermod -aG input $USER)
+# If unset or fails, use system keybinds (Hyprland bindings.conf) instead.
+#
+# Key format: "<insert>" | "<ctrl>+<alt>+a" | "<cmd>+<shift>+space"
+hotkey:
+  key: null   # e.g. "<insert>" or "<ctrl>+<alt>+space"
+
 # --- Chinese conversion ---
 # Whisper outputs Simplified Chinese (zh-CN). Use opencc to convert to Traditional.
 # Modes: s2t (Simplified→Traditional), s2tw (Taiwan), s2twp (Taiwan + phrases) — recommended

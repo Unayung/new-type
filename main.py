@@ -33,6 +33,7 @@ import yaml
 from core.recorder import Recorder
 from core.transcriber import create_backend
 from core.cleanup import create_cleanup
+from core.hotkey import create_hotkey_listener
 from core import context
 
 app = typer.Typer(help="new-type voice dictation")
@@ -112,6 +113,8 @@ class Daemon:
             self._opencc = OpenCC(cc_mode)
         else:
             self._opencc = None
+
+        self._hotkey = create_hotkey_listener(config, self)
 
     def _inject(self, text: str) -> None:
         if sys.platform == "darwin":
@@ -197,6 +200,11 @@ class Daemon:
         server.settimeout(1.0)
 
         self.status.start()
+
+        if self._hotkey:
+            self._hotkey.start()
+            print(f"[new-type] Hotkey active: {self._hotkey.key}", flush=True)
+
         print(f"[new-type] Daemon running. Socket: {self.socket_path}", flush=True)
 
         def _shutdown(sig, frame):
@@ -227,6 +235,13 @@ class Daemon:
                     response = self.handle_toggle()
                 elif data == "status":
                     response = self.handle_status()
+                elif data == "quit":
+                    conn.sendall(b"quitting")
+                    conn.close()
+                    server.close()
+                    sock_path.unlink(missing_ok=True)
+                    self.status.clear()
+                    sys.exit(0)
                 else:
                     response = f"unknown_command:{data}"
                 conn.sendall(response.encode())
