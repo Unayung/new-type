@@ -185,6 +185,20 @@ _HTML = """<!DOCTYPE html>
 </div>
 
 <script>
+// Map browser e.key → pynput format
+const KEY_MAP = {
+  'Insert': '<insert>', 'Delete': '<delete>', 'Home': '<home>', 'End': '<end>',
+  'PageUp': '<page_up>', 'PageDown': '<page_down>',
+  'ArrowUp': '<up>', 'ArrowDown': '<down>', 'ArrowLeft': '<left>', 'ArrowRight': '<right>',
+  'Escape': '<esc>', 'Tab': '<tab>', 'CapsLock': '<caps_lock>',
+  'F1':'<f1>','F2':'<f2>','F3':'<f3>','F4':'<f4>','F5':'<f5>','F6':'<f6>',
+  'F7':'<f7>','F8':'<f8>','F9':'<f9>','F10':'<f10>','F11':'<f11>','F12':'<f12>',
+  'PrintScreen':'<print_screen>','ScrollLock':'<scroll_lock>','Pause':'<pause>',
+  'NumLock':'<num_lock>',
+  'Control': '<ctrl>', 'Alt': '<alt>', 'Shift': '<shift>',
+  'Meta': '<cmd>', 'ContextMenu': '<menu>',
+};
+
 function startCapture() {
   const btn = document.getElementById('captureBtn');
   const inp = document.getElementById('hotkey_key');
@@ -192,26 +206,41 @@ function startCapture() {
   btn.textContent = 'Press a key…';
   inp.value = '';
 
-  // Ask the daemon's Python process to capture the next keypress (handles Fn/Globe)
+  let done = false;
+
+  function finish(key) {
+    if (done) return;
+    done = true;
+    inp.value = key;
+    btn.classList.remove('listening');
+    btn.textContent = 'Capture';
+    document.removeEventListener('keydown', onKey, true);
+  }
+
+  // Browser-side capture (works for Insert and most keys on Linux/Wayland)
+  function onKey(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    const mapped = KEY_MAP[e.key];
+    if (mapped) {
+      finish(mapped);
+    } else if (e.key.length === 1) {
+      // Regular printable character
+      finish(`<${e.key}>`);
+    }
+    // Ignore unrecognized keys (e.g. lone modifier with no mapping)
+  }
+  document.addEventListener('keydown', onKey, true);
+
+  // Also ask daemon for Fn/Globe key (macOS — not visible to browser)
   fetch('/capture/start', { method: 'POST' }).then(() => {
     const poll = setInterval(() => {
+      if (done) { clearInterval(poll); return; }
       fetch('/capture/result')
         .then(r => r.json())
-        .then(r => {
-          if (r.key) {
-            clearInterval(poll);
-            inp.value = r.key;
-            btn.classList.remove('listening');
-            btn.textContent = 'Capture';
-          }
-        });
+        .then(r => { if (r.key) { clearInterval(poll); finish(r.key); } });
     }, 150);
-    // Timeout after 10s
-    setTimeout(() => {
-      clearInterval(poll);
-      btn.classList.remove('listening');
-      btn.textContent = 'Capture';
-    }, 10000);
+    setTimeout(() => { clearInterval(poll); if (!done) { btn.classList.remove('listening'); btn.textContent = 'Capture'; document.removeEventListener('keydown', onKey, true); } }, 10000);
   });
 }
 
@@ -275,7 +304,7 @@ def _sel(condition: bool) -> str:
 
 
 def _render(config: dict) -> str:
-    hk = config.get("hotkey", {}).get("key", "")
+    hk = config.get("hotkey", {}).get("key") or ""
     mode = config.get("recording", {}).get("mode", "hold")
     model = config.get("transcription", {}).get("model", "large-v3-turbo")
     lang = config.get("transcription", {}).get("language", "") or ""
