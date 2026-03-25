@@ -2,7 +2,7 @@ class NewType < Formula
   desc "Local-first voice dictation for macOS (Whisper + Fn/Globe hotkey)"
   homepage "https://github.com/Unayung/new-type"
   url "https://github.com/Unayung/new-type/archive/refs/tags/v0.1.0.tar.gz"
-  sha256 "0019dfc4b32d63c1392aa264aed2253c1e0c2fb09216f8e2cc269bbfb8bb49b5"
+  sha256 "6469adabe2bbaccd3e2b42a14307d825e79db0a69719e69a4d35087cadcec121"
   version "0.1.0"
   license "MIT"
   head "https://github.com/Unayung/new-type.git", branch: "master"
