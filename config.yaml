@@ -1,0 +1,75 @@
+# new-type configuration
+
+# --- Transcription backend ---
+# Options:
+#   faster_whisper  — local, CTranslate2 (recommended for most)
+#   whisper_cpp     — local, GGUF (for belle-turbo and quantized models)
+#   groq            — cloud, fastest
+#   openai          — cloud
+#   assemblyai      — cloud
+
+transcription:
+  backend: faster_whisper
+  model: large-v3       # turbo | large-v3 | small | medium | base | tiny
+  device: cuda          # auto | cpu | cuda
+  compute_type: float16 # float16 is fastest on GPU
+  language: zh          # null = auto-detect | "zh" | "en" | "ja" etc.
+
+  # initial_prompt: bias the model toward a specific style/script.
+  # For zh-TW, this nudges Whisper to output Traditional Chinese directly.
+  initial_prompt: "以下是台灣繁體中文的日常口語對話，語氣自然隨性，包含中英文夾雜、台灣用語與口語表達。"
+
+  # Suppress hallucinations on silence (e.g. "Thank you." / "謝謝。" on quiet audio)
+  hallucination_silence_threshold: 2.0
+
+  # For whisper_cpp backend:
+  # backend: whisper_cpp
+  # model_path: ~/.local/share/new-type/models/belle-turbo.gguf
+  # binary: whisper-cpp
+
+  # For cloud backends (uncomment and fill api_key):
+  # backend: groq
+  # api_key: your_groq_api_key_here
+  # model: whisper-large-v3-turbo
+
+# --- LLM cleanup ---
+# Options: none | ollama | openai | anthropic
+cleanup:
+  backend: none         # Start with none; switch to ollama for local LLM cleanup
+
+  # Ollama (local, recommended for privacy):
+  # backend: ollama
+  # model: llama3.2
+  # base_url: http://localhost:11434
+
+  # Cloud:
+  # backend: anthropic
+  # api_key: your_key_here
+  # model: claude-haiku-4-5-20251001
+
+# --- Recording mode ---
+# toggle    — one keybind press starts, next press stops
+# auto_stop — starts on keypress, stops automatically after silence
+# hold      — hold key to record, release to stop (configure in Hyprland with bind/bindr)
+recording:
+  mode: hold
+
+  # auto_stop tuning (only used when mode: auto_stop)
+  silence_duration: 0.8    # seconds of silence before auto-stop triggers
+  speech_threshold: 0.5    # Silero VAD probability threshold (0–1); raise to reduce false triggers
+  min_speech_duration: 0.5 # minimum seconds of speech before silence detection arms
+  no_speech_timeout: 5.0   # seconds to cancel if you never speak
+
+# --- Chinese conversion ---
+# Whisper outputs Simplified Chinese (zh-CN). Use opencc to convert to Traditional.
+# Modes: s2t (Simplified→Traditional), s2tw (Taiwan), s2twp (Taiwan + phrases) — recommended
+chinese_convert: s2twp   # set to null to disable
+
+# --- Audio ---
+audio:
+  sample_rate: 16000
+  device: Webcam C270 Pro       # null = system default; set to device index/name to override
+
+# --- Socket (daemon IPC) ---
+socket:
+  path: /tmp/new-type.sock

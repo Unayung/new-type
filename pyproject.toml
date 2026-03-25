@@ -1,0 +1,25 @@
+[project]
+name = "new-type"
+version = "0.1.0"
+description = "Local-first voice dictation for Linux and macOS"
+requires-python = ">=3.13"
+dependencies = [
+    "faster-whisper>=1.2.1",
+    "httpx>=0.28.1",
+    "numpy>=2.4.3",
+    "pillow>=12.1.1",
+    "pynput>=1.8.1",
+    "pyperclip>=1.11.0",
+    "pystray>=0.19.5",
+    "sounddevice>=0.5.5",
+    "pyyaml>=6.0.3",
+    "typer>=0.9.0",
+    "opencc-python-reimplemented>=0.1.7",
+]
+
+[tool.uv]
+package = false
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
