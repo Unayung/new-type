@@ -38,10 +38,29 @@ class HotkeyListener:
         self._thread: threading.Thread | None = None
         self._listener = None
         self._held = False
+        self._stopped = False
+        self._runloop = None  # Quartz CFRunLoop ref, set when _run_fn_quartz is active
 
     def start(self) -> None:
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
+
+    def stop(self) -> None:
+        """Signal the listener to stop. Safe to call from any thread."""
+        self._stopped = True
+        if self._listener:
+            try:
+                self._listener.stop()
+            except Exception:
+                pass
+            self._listener = None
+        if self._runloop is not None:
+            try:
+                from Quartz import CFRunLoopStop
+                CFRunLoopStop(self._runloop)
+            except Exception:
+                pass
+            self._runloop = None
 
     def _run(self) -> None:
         try:
@@ -103,6 +122,8 @@ class HotkeyListener:
             was = prev_fn[0]
             prev_fn[0] = fn_now
 
+            if self._stopped:
+                return event
             if fn_now and not was:
                 # Physical press
                 if self.mode == "hold":
@@ -134,8 +155,10 @@ class HotkeyListener:
         loop = CFRunLoopGetCurrent()
         CFRunLoopAddSource(loop, src, kCFRunLoopDefaultMode)
         CGEventTapEnable(tap, True)
+        self._runloop = loop
         print("[hotkey] Fn/Globe tap active (Quartz CGEventTap)", flush=True)
         CFRunLoopRun()
+        self._runloop = None
 
     def _run_fn_press(self) -> None:
         self._run_fn_quartz()

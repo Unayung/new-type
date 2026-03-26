@@ -331,6 +331,34 @@ class Daemon:
         state = "recording" if self.recorder.is_recording else "idle"
         return f"{state} (mode:{self.mode})"
 
+    def apply_new_config(self, config: dict) -> None:
+        """Hot-reload settings without restarting the process."""
+        self.config = config
+        self.mode = config.get("recording", {}).get("mode", "toggle")
+
+        # Swap hotkey listener
+        if self._hotkey:
+            self._hotkey.stop()
+        self._hotkey = create_hotkey_listener(config, self)
+        if self._hotkey:
+            self._hotkey.start()
+            print(f"[new-type] Hotkey reloaded: {self._hotkey.key}", flush=True)
+        else:
+            print("[new-type] No hotkey configured.", flush=True)
+
+        # Swap transcriber (model or language changed)
+        self.transcriber = create_backend(config["transcription"])
+
+        # Swap OpenCC
+        cc_mode = config.get("chinese_convert")
+        if cc_mode:
+            from opencc import OpenCC
+            self._opencc = OpenCC(cc_mode)
+        else:
+            self._opencc = None
+
+        print("[new-type] Settings applied.", flush=True)
+
     def shutdown(self) -> None:
         """Clean up and exit. Safe to call from any thread."""
         if self._server:
@@ -468,6 +496,69 @@ def devices():
     """List available audio input devices."""
     from core.recorder import list_devices
     list_devices()
+
+
+@app.command()
+def setup():
+    """First-time setup: check permissions and pre-download the Whisper model."""
+    import subprocess
+    import shutil
+
+    if sys.platform != "darwin":
+        print("setup is only needed on macOS")
+        return
+
+    print("new-type setup\n")
+
+    # ── Step 1: Accessibility ─────────────────────────────────────────────
+    print("Step 1/2 — Accessibility permission")
+
+    # Locate the .app bundle (installed by Homebrew next to the bin)
+    bin_path = shutil.which("new-type")
+    if bin_path:
+        app_bundle = Path(bin_path).resolve().parent.parent.parent / "new-type.app"
+    else:
+        app_bundle = Path(__file__).resolve().parent.parent / "new-type.app"
+
+    if app_bundle.exists():
+        print(f"  App bundle: {app_bundle}")
+    else:
+        print("  (app bundle not found — you may be running from source)")
+
+    print("  Opening System Settings → Privacy & Security → Accessibility…")
+    subprocess.run([
+        "open",
+        "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+    ])
+    if app_bundle.exists():
+        print(f"\n  Add this app to the list (if not already there):\n    {app_bundle}\n")
+    input("  Press Enter once new-type.app is in the Accessibility list… ")
+    print()
+
+    # ── Step 2: Pre-download model ────────────────────────────────────────
+    print("Step 2/2 — Whisper model")
+    config = load_config()
+    tcfg = config["transcription"]
+    backend_name = tcfg.get("backend", "mlx_whisper")
+
+    if backend_name not in ("mlx_whisper", "faster_whisper"):
+        print(f"  Backend is '{backend_name}' (cloud) — no local model to download.\n")
+    else:
+        model_name = tcfg.get("model", "large-v3-turbo")
+        print(f"  Backend: {backend_name}, model: {model_name}")
+        print("  Downloading model files (this may take a few minutes on first run)…")
+        dummy = np.zeros(16000, dtype=np.float32)
+        try:
+            transcriber = create_backend(tcfg)
+            transcriber.transcribe(dummy, sample_rate=16000)
+        except Exception:
+            pass  # model is now cached; transcription error on silence is fine
+        print("  ✓ Model ready\n")
+
+    # ── Done ──────────────────────────────────────────────────────────────
+    print("Setup complete! Start (and auto-launch on login):")
+    print("  brew services start unayung/new-type/new-type\n")
+    print("Settings UI: new-type opens it via the menu bar icon → Settings…")
 
 
 if __name__ == "__main__":

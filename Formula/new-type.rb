@@ -55,13 +55,10 @@ class NewType < Formula
 
   def caveats
     <<~EOS
-      Grant Accessibility permission to the app bundle:
-        System Settings → Privacy & Security → Accessibility → add:
-        #{opt_prefix}/new-type.app
+      Run first-time setup (grants Accessibility + pre-downloads the Whisper model):
+        new-type setup
 
-      On first transcription, the Whisper model (~800MB) will download automatically.
-
-      Start the daemon (and auto-start on login):
+      Then start the daemon (auto-launches on login):
         brew services start unayung/new-type/new-type
     EOS
   end

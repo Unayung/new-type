@@ -2,15 +2,13 @@
 Local web config UI — served on localhost for the Settings menu item.
 
 Opens a browser page where users can edit key config values without
-touching config.yaml directly. Changes are written back to the file
-and take effect on daemon restart.
+touching config.yaml directly. Changes are applied immediately via
+hot-reload — no daemon restart needed.
 """
 
 from __future__ import annotations
 
 import json
-import os
-import sys
 import threading
 import webbrowser
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -285,8 +283,8 @@ function save() {
     const t = document.getElementById('toast');
     if (r.ok) {
       t.className = 'toast ok';
-      t.textContent = '✓ Saved — restarting daemon…';
-      setTimeout(() => location.reload(), 2500);
+      t.textContent = '✓ Saved';
+      setTimeout(() => location.reload(), 800);
     } else {
       t.className = 'toast err';
       t.textContent = '✗ Error: ' + r.error;
@@ -448,11 +446,12 @@ class _KeyCapture:
 _capture = _KeyCapture()
 
 
-def _restart() -> None:
-    """Replace current process with a fresh daemon after a short delay."""
+def _apply_and_reload(config: dict) -> None:
+    """Hot-reload daemon settings after a short delay (lets HTTP response flush)."""
     import time
-    time.sleep(0.3)  # let HTTP response flush
-    os.execv(sys.executable, [sys.executable] + sys.argv)
+    time.sleep(0.1)
+    if _daemon:
+        _daemon.apply_new_config(config)
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -503,14 +502,14 @@ class _Handler(BaseHTTPRequestHandler):
             return
         length = int(self.headers.get("Content-Length", 0))
         raw = self.rfile.read(length)
-        restart = False
+        new_config = None
         try:
             data = json.loads(raw)
             config = yaml.safe_load(CONFIG_PATH.read_text())
             config = _apply(config, data)
             CONFIG_PATH.write_text(yaml.dump(config, allow_unicode=True, sort_keys=False))
+            new_config = config
             resp = json.dumps({"ok": True}).encode()
-            restart = True
         except Exception as e:
             resp = json.dumps({"ok": False, "error": str(e)}).encode()
         self.send_response(200)
@@ -518,8 +517,8 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(resp)))
         self.end_headers()
         self.wfile.write(resp)
-        if restart:
-            threading.Thread(target=_restart, daemon=True).start()
+        if new_config is not None:
+            threading.Thread(target=_apply_and_reload, args=(new_config,), daemon=True).start()
 
 
 _daemon = None  # set by ConfigServer.start()
