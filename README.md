@@ -38,37 +38,31 @@ Inspired by [Typeless](https://typeless.com), built for privacy, Wayland, and Tr
 
 ## Installation
 
+### macOS (Homebrew)
+
+```bash
+brew tap unayung/new-type
+brew install --HEAD new-type
+new-type setup
+brew services start new-type
+```
+
+`new-type setup` handles Accessibility permission and downloads the Whisper model (~800 MB). Default hotkey is `⌘⌥L` — change it via the menu bar icon → Settings…
+
+### Linux / from source
+
 ```bash
 git clone git@github.com:Unayung/new-type.git
 cd new-type
 uv sync
 ```
 
-**Linux:**
 ```bash
 sudo pacman -S wtype socat   # Arch/Hyprland
-```
-
-**macOS:**
-```bash
-brew install socat
-```
-
----
-
-## Quick start
-
-```bash
 uv run main.py daemon
 ```
 
-In another terminal:
-```bash
-uv run main.py toggle   # start/stop recording
-uv run main.py devices  # list audio input devices
-```
-
-First run downloads the Whisper model (~1.5 GB for turbo, ~3 GB for large-v3).
+First run downloads the Whisper model (~800 MB for large-v3-turbo, ~3 GB for large-v3).
 
 ---
 
@@ -123,11 +117,12 @@ recording:
 
 ```yaml
 hotkey:
-  key: "<insert>"   # Linux
-  # key: "<fn>"     # macOS — the Fn/Globe key
+  key: "<cmd>+<alt>+l"   # macOS default
+  # key: "<insert>"       # Linux
+  # key: "<fn>"           # macOS Fn/Globe key (also works)
 ```
 
-**macOS:** Grant Accessibility permission when prompted (System Settings → Privacy & Security → Accessibility). The `<fn>` key (Globe key on Apple Silicon) works as a dedicated dictation trigger with no conflicts.
+**macOS:** Change the hotkey via menu bar icon → Settings… (no restart needed). Requires Accessibility permission — `new-type setup` handles this.
 
 **Linux/Wayland:** Add yourself to the `input` group if the hotkey fails:
 ```bash
