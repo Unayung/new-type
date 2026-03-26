@@ -59,7 +59,7 @@ class NewType < Formula
         new-type setup
 
       Then start the daemon (auto-launches on login):
-        brew services start unayung/new-type/new-type
+        brew services start new-type
     EOS
   end
 end
