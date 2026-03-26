@@ -553,11 +553,26 @@ def setup():
     input("  Press Enter once new-type.app is in the Accessibility list… ")
     print()
 
-    # ── Step 2: Pre-download model ────────────────────────────────────────
+    # ── Step 2: Backend + model ───────────────────────────────────────────
     print("Step 2/2 — Whisper model")
+    import platform
+    is_apple_silicon = sys.platform == "darwin" and platform.machine() == "arm64"
+
     config = load_config()
     tcfg = config["transcription"]
     backend_name = tcfg.get("backend", "mlx_whisper")
+
+    # Auto-switch: mlx_whisper only works on Apple Silicon
+    if backend_name == "mlx_whisper" and not is_apple_silicon:
+        print("  Intel Mac detected — mlx_whisper requires Apple Silicon.")
+        print("  Switching backend to faster_whisper…")
+        tcfg["backend"] = "faster_whisper"
+        tcfg.setdefault("model", "turbo")
+        tcfg.pop("device", None)
+        config["transcription"] = tcfg
+        CONFIG_PATH.write_text(yaml.dump(config, allow_unicode=True, sort_keys=False))
+        backend_name = "faster_whisper"
+        print(f"  Config updated: backend=faster_whisper, model={tcfg['model']}\n")
 
     if backend_name not in ("mlx_whisper", "faster_whisper"):
         print(f"  Backend is '{backend_name}' (cloud) — no local model to download.\n")
