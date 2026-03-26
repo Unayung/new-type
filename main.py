@@ -44,6 +44,13 @@ CONFIG_PATH = Path(__file__).parent / "config.yaml"
 
 
 def load_config() -> dict:
+    if not CONFIG_PATH.exists():
+        example = CONFIG_PATH.parent / "config.example.yaml"
+        if example.exists():
+            import shutil
+            shutil.copy(example, CONFIG_PATH)
+        else:
+            raise FileNotFoundError(f"config.yaml not found: {CONFIG_PATH}")
     with open(CONFIG_PATH) as f:
         return yaml.safe_load(f)
 
