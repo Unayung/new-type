@@ -521,18 +521,28 @@ def setup():
     else:
         app_bundle = Path(__file__).resolve().parent.parent / "new-type.app"
 
+    # Copy .app to ~/Applications/ so it's visible in the Accessibility file picker
+    # (/opt paths are hidden in macOS system dialogs)
+    user_apps = Path.home() / "Applications"
+    visible_bundle = user_apps / "new-type.app"
+
     if app_bundle.exists():
-        print(f"  App bundle: {app_bundle}")
+        user_apps.mkdir(exist_ok=True)
+        if not visible_bundle.exists():
+            shutil.copytree(str(app_bundle), str(visible_bundle))
+            print(f"  Copied app to {visible_bundle}")
+        else:
+            print(f"  App already at {visible_bundle}")
     else:
         print("  (app bundle not found — you may be running from source)")
+        visible_bundle = app_bundle  # fallback
 
     print("  Opening System Settings → Privacy & Security → Accessibility…")
     subprocess.run([
         "open",
         "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
     ])
-    if app_bundle.exists():
-        print(f"\n  Add this app to the list (if not already there):\n    {app_bundle}\n")
+    print(f"\n  Click '+' and add:\n    {visible_bundle}\n")
     input("  Press Enter once new-type.app is in the Accessibility list… ")
     print()
 
