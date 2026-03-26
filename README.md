@@ -117,7 +117,7 @@ recording:
 
 ```yaml
 hotkey:
-  key: "<cmd>+<alt>+l"   # macOS default
+  key: "<cmd>+<shift>+l"   # macOS default
   # key: "<insert>"       # Linux
   # key: "<fn>"           # macOS Fn/Globe key (also works)
 ```

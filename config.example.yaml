@@ -14,7 +14,7 @@ recording:
   min_speech_duration: 0.5
   no_speech_timeout: 5.0
 hotkey:
-  key: <cmd>+<alt>+l
+  key: <cmd>+<shift>+l
 chinese_convert: s2twp
 audio:
   sample_rate: 16000

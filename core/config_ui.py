@@ -375,19 +375,56 @@ class _KeyCapture:
         try:
             from pynput import keyboard
 
+            MODIFIER_KEYS = {
+                keyboard.Key.cmd, keyboard.Key.cmd_l, keyboard.Key.cmd_r,
+                keyboard.Key.alt, keyboard.Key.alt_l, keyboard.Key.alt_r,
+                keyboard.Key.shift, keyboard.Key.shift_l, keyboard.Key.shift_r,
+                keyboard.Key.ctrl, keyboard.Key.ctrl_l, keyboard.Key.ctrl_r,
+            }
+            MODIFIER_NAME = {
+                keyboard.Key.cmd: 'cmd', keyboard.Key.cmd_l: 'cmd', keyboard.Key.cmd_r: 'cmd',
+                keyboard.Key.alt: 'alt', keyboard.Key.alt_l: 'alt', keyboard.Key.alt_r: 'alt',
+                keyboard.Key.shift: 'shift', keyboard.Key.shift_l: 'shift', keyboard.Key.shift_r: 'shift',
+                keyboard.Key.ctrl: 'ctrl', keyboard.Key.ctrl_l: 'ctrl', keyboard.Key.ctrl_r: 'ctrl',
+            }
+            # macOS virtual key code → base character (US QWERTY, unaffected by modifiers)
+            VK_TO_CHAR = {
+                0:'a',1:'s',2:'d',3:'f',4:'h',5:'g',6:'z',7:'x',8:'c',9:'v',
+                11:'b',12:'q',13:'w',14:'e',15:'r',16:'y',17:'t',18:'1',19:'2',
+                20:'3',21:'4',22:'6',23:'5',24:'=',25:'9',26:'7',27:'-',28:'8',
+                29:'0',30:']',31:'o',32:'u',33:'[',34:'i',35:'p',37:'l',38:'j',
+                39:"'",40:'k',41:';',42:'\\',43:',',44:'/',45:'n',46:'m',47:'.',
+                50:'`',
+            }
+            held_mods: set = set()
+
             def on_press(key):
                 if self._done.is_set():
                     return False
-                try:
-                    # Named special key → <name>
-                    name = key.name
-                    self._set(f"<{name}>")
-                except AttributeError:
-                    # Regular character
-                    char = getattr(key, 'char', None)
-                    if char:
-                        self._set(f"<{char}>")
-                return False  # stop listener
+                if key in MODIFIER_KEYS:
+                    held_mods.add(MODIFIER_NAME[key])
+                    return  # keep listening for the trigger key
+                # Non-modifier: use vk to get the physical key name (ignores Option composition)
+                vk = getattr(key, 'vk', None)
+                if vk is not None and vk in VK_TO_CHAR:
+                    key_str = VK_TO_CHAR[vk]
+                else:
+                    try:
+                        key_str = f"<{key.name}>"
+                    except AttributeError:
+                        char = getattr(key, 'char', None)
+                        if char and char.isprintable():
+                            key_str = char.lower()
+                        else:
+                            return  # ignore, keep listening
+
+                if held_mods:
+                    mod_order = ['cmd', 'ctrl', 'shift', 'alt']
+                    mods = [m for m in mod_order if m in held_mods]
+                    self._set('+'.join(f"<{m}>" for m in mods) + '+' + key_str)
+                else:
+                    self._set(key_str if key_str.startswith('<') else f"<{key_str}>")
+                return False
 
             with keyboard.Listener(on_press=on_press) as lst:
                 self._done.wait(timeout=10)
