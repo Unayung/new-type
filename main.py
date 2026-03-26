@@ -516,7 +516,8 @@ def setup():
     # Locate the .app bundle (installed by Homebrew next to the bin)
     bin_path = shutil.which("new-type")
     if bin_path:
-        app_bundle = Path(bin_path).resolve().parent.parent.parent / "new-type.app"
+        # brew layout: prefix/bin/new-type  →  prefix/new-type.app
+        app_bundle = Path(bin_path).resolve().parent.parent / "new-type.app"
     else:
         app_bundle = Path(__file__).resolve().parent.parent / "new-type.app"
 
