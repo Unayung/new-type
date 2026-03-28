@@ -439,6 +439,7 @@ name = "new-type"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "evdev", marker = "sys_platform == 'linux'" },
     { name = "faster-whisper" },
     { name = "httpx" },
     { name = "mlx-whisper", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'" },
@@ -455,6 +456,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "evdev", marker = "sys_platform == 'linux'", specifier = ">=1.7.0" },
     { name = "faster-whisper", specifier = ">=1.2.1" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "mlx-whisper", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'", specifier = ">=0.4.2" },
