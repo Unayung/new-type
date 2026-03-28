@@ -8,6 +8,7 @@ hot-reload — no daemon restart needed.
 
 from __future__ import annotations
 
+import html as _html_mod
 import json
 import threading
 import webbrowser
@@ -153,6 +154,15 @@ _HTML = """<!DOCTYPE html>
     <input type="text" id="transcription_language" value="__transcription_language__" placeholder="zh · en · ja · (blank = auto-detect)">
     <div class="hint">ISO 639-1 code, or leave blank for auto-detect</div>
   </div>
+  <div class="row">
+    <label>Initial prompt</label>
+    <textarea id="transcription_initial_prompt" rows="3"
+      style="width:100%;padding:8px 10px;border:1px solid #d2d2d7;border-radius:8px;
+             font-size:13px;resize:vertical;color:#3a3a3c;background:#fafafa;transition:border-color .15s;"
+      onfocus="this.style.borderColor='#0071e3'" onblur="this.style.borderColor='#d2d2d7'"
+      placeholder="e.g. 以下是台灣繁體中文的日常口語對話…">__transcription_initial_prompt__</textarea>
+    <div class="hint">Biases Whisper toward a vocabulary/style — acts as a "prior transcript" prefix</div>
+  </div>
 
   <h2>Chinese conversion</h2>
   <div class="row">
@@ -271,6 +281,7 @@ function save() {
     recording_mode: document.getElementById('recording_mode').value,
     transcription_model: document.getElementById('transcription_model').value,
     transcription_language: document.getElementById('transcription_language').value.trim(),
+    transcription_initial_prompt: document.getElementById('transcription_initial_prompt').value,
     chinese_convert: document.getElementById('chinese_convert').value,
   };
   fetch('/save', {
@@ -306,6 +317,7 @@ def _render(config: dict) -> str:
     mode = config.get("recording", {}).get("mode", "hold")
     model = config.get("transcription", {}).get("model", "large-v3-turbo")
     lang = config.get("transcription", {}).get("language", "") or ""
+    initial_prompt = config.get("transcription", {}).get("initial_prompt", "") or ""
     cc = config.get("chinese_convert", "") or ""
 
     replacements = {
@@ -321,6 +333,7 @@ def _render(config: dict) -> str:
         "__sel_base__": _sel(model == "base"),
         "__sel_tiny__": _sel(model == "tiny"),
         "__transcription_language__": lang,
+        "__transcription_initial_prompt__": _html_mod.escape(initial_prompt),
         "__sel_cc_none__": _sel(cc == ""),
         "__sel_cc_s2t__": _sel(cc == "s2t"),
         "__sel_cc_s2tw__": _sel(cc == "s2tw"),
@@ -338,6 +351,7 @@ def _apply(config: dict, data: dict) -> dict:
     config.setdefault("transcription", {})["model"] = data.get("transcription_model", "large-v3-turbo")
     lang = data.get("transcription_language", "").strip() or None
     config["transcription"]["language"] = lang
+    config["transcription"]["initial_prompt"] = data.get("transcription_initial_prompt", "").strip() or None
     cc = data.get("chinese_convert", "").strip() or None
     config["chinese_convert"] = cc
     return config

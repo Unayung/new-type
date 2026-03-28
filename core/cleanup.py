@@ -52,9 +52,11 @@ class PassthroughCleanup:
 class OllamaCleanup:
     """Local LLM via Ollama. Keeps everything on-device."""
 
-    def __init__(self, model: str = "llama3.2", base_url: str = "http://localhost:11434"):
+    def __init__(self, model: str = "llama3.2", base_url: str = "http://localhost:11434",
+                 system_prompt: str = SYSTEM_PROMPT):
         self.model = model
         self.base_url = base_url.rstrip("/")
+        self.system_prompt = system_prompt
 
     def clean(self, text: str, ctx: AppContext) -> str:
         import httpx
@@ -66,7 +68,7 @@ class OllamaCleanup:
                     "model": self.model,
                     "stream": False,
                     "messages": [
-                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "system", "content": self.system_prompt},
                         {"role": "user", "content": _build_user_prompt(text, ctx)},
                     ],
                 },
@@ -76,9 +78,11 @@ class OllamaCleanup:
 
 
 class OpenAICleanup:
-    def __init__(self, api_key: str, model: str = "gpt-4o-mini"):
+    def __init__(self, api_key: str, model: str = "gpt-4o-mini",
+                 system_prompt: str = SYSTEM_PROMPT):
         self.api_key = api_key
         self.model = model
+        self.system_prompt = system_prompt
 
     def clean(self, text: str, ctx: AppContext) -> str:
         import httpx
@@ -90,7 +94,7 @@ class OpenAICleanup:
                 json={
                     "model": self.model,
                     "messages": [
-                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "system", "content": self.system_prompt},
                         {"role": "user", "content": _build_user_prompt(text, ctx)},
                     ],
                 },
@@ -100,9 +104,11 @@ class OpenAICleanup:
 
 
 class AnthropicCleanup:
-    def __init__(self, api_key: str, model: str = "claude-haiku-4-5-20251001"):
+    def __init__(self, api_key: str, model: str = "claude-haiku-4-5-20251001",
+                 system_prompt: str = SYSTEM_PROMPT):
         self.api_key = api_key
         self.model = model
+        self.system_prompt = system_prompt
 
     def clean(self, text: str, ctx: AppContext) -> str:
         import httpx
@@ -117,7 +123,7 @@ class AnthropicCleanup:
                 json={
                     "model": self.model,
                     "max_tokens": 1024,
-                    "system": SYSTEM_PROMPT,
+                    "system": self.system_prompt,
                     "messages": [
                         {"role": "user", "content": _build_user_prompt(text, ctx)},
                     ],
@@ -136,6 +142,7 @@ def create_cleanup(config: dict):
       {"backend": "anthropic", "api_key": "...", "model": "claude-haiku-4-5-20251001"}
     """
     backend = config.get("backend", "none")
+    system_prompt = config.get("system_prompt") or SYSTEM_PROMPT
 
     if backend == "none":
         return PassthroughCleanup()
@@ -143,10 +150,19 @@ def create_cleanup(config: dict):
         return OllamaCleanup(
             model=config.get("model", "llama3.2"),
             base_url=config.get("base_url", "http://localhost:11434"),
+            system_prompt=system_prompt,
         )
     elif backend == "openai":
-        return OpenAICleanup(api_key=config["api_key"], model=config.get("model", "gpt-4o-mini"))
+        return OpenAICleanup(
+            api_key=config["api_key"],
+            model=config.get("model", "gpt-4o-mini"),
+            system_prompt=system_prompt,
+        )
     elif backend == "anthropic":
-        return AnthropicCleanup(api_key=config["api_key"], model=config.get("model", "claude-haiku-4-5-20251001"))
+        return AnthropicCleanup(
+            api_key=config["api_key"],
+            model=config.get("model", "claude-haiku-4-5-20251001"),
+            system_prompt=system_prompt,
+        )
     else:
         raise ValueError(f"Unknown cleanup backend: {backend}")
