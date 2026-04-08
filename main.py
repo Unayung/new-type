@@ -81,12 +81,12 @@ class StatusIndicator:
     def set_idle(self) -> None:
         if self._tray:
             self._tray.set_idle()
-        self._write_json("●", "idle", "new-type: idle")
+        self._write_json('<span color="#22c55e">●</span>', "idle", "new-type: idle")
 
     def set_recording(self) -> None:
         if self._tray:
             self._tray.set_recording()
-        self._write_json("●", "rec", "new-type: recording…")
+        self._write_json('<span color="#ef4444">●</span>', "rec", "new-type: recording…")
 
     def clear(self) -> None:
         STATUS_FILE.unlink(missing_ok=True)
@@ -344,9 +344,15 @@ class Daemon:
         self.mode = config.get("recording", {}).get("mode", "toggle")
 
         # Swap hotkey listener
-        if self._hotkey:
-            self._hotkey.stop()
-        self._hotkey = create_hotkey_listener(config, self)
+        old_hotkey = self._hotkey
+        try:
+            new_hotkey = create_hotkey_listener(config, self)
+        except Exception as e:
+            print(f"[new-type] Invalid hotkey config, keeping previous: {e}", flush=True)
+            return
+        if old_hotkey:
+            old_hotkey.stop()
+        self._hotkey = new_hotkey
         if self._hotkey:
             self._hotkey.start()
             print(f"[new-type] Hotkey reloaded: {self._hotkey.key}", flush=True)

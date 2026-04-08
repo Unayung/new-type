@@ -6,6 +6,7 @@ if [[ -n "$STATUS" ]]; then
     exit 0
 fi
 
+export PATH="/home/unayung/.local/bin:$PATH"
 export LD_LIBRARY_PATH="/home/unayung/Projects/new-type/lib:/opt/cuda/targets/x86_64-linux/lib:$LD_LIBRARY_PATH"
 cd /home/unayung/Projects/new-type
 exec uv run main.py daemon
